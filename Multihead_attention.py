@@ -69,13 +69,8 @@ class MultiHeadAttention(Layer):
     def call(self, inputs):
         concatenated_result = 0
         for i in range(self.n_channels):
-            # Break the input into multiple smaller inputs along the embedding
-            start = int(i * self.reduced_embedding)
-            end = int((i + 1) * self.reduced_embedding)
-            attention_input = inputs[:, start:end]
-
-            # Input this into the attention layers and store the output
-            attention_output = self.attention_layers[i](attention_input)
+            # Each attention layer outputs an array with n_embedding in size, which concatenates to the full input shape
+            attention_output = self.attention_layers[i](inputs)
 
             # Concatenate the result
             if i > 0:
