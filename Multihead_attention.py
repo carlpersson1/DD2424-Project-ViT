@@ -44,9 +44,11 @@ class DotProductAttention(Layer):
 
 
 class MultiHeadAttention(Layer):
-    def __init__(self, n_channels):
+    def __init__(self, n_channels, query_size, key_size):
         super(MultiHeadAttention, self).__init__()
         self.n_channels = n_channels
+        self.query_size = query_size
+        self.key_size = key_size
         self.linear_transform = None
         self.reduced_embedding = None
         self.attention_layers = []
@@ -59,7 +61,7 @@ class MultiHeadAttention(Layer):
 
         # Create stack of Attention layers
         for i in range(self.n_channels):
-            self.attention_layers.append(DotProductAttention(self.reduced_embedding, self.reduced_embedding, self.reduced_embedding))
+            self.attention_layers.append(DotProductAttention(self.query_size, self.key_size, self.reduced_embedding))
 
         # Initialize the last linear transform
         initializer = tf.initializers.GlorotNormal()
@@ -84,8 +86,23 @@ class MultiHeadAttention(Layer):
         return output
 
 
+class NormLayer(Layer):
+    def __init__(self):
+        super(NormLayer, self).__init__()
+
+    def call(self, inputs, epsilon=10 ** (-8)):
+        # Normalize over hidden layers instead of training samples
+        mean = tf.reduce_mean(inputs, axis=1)
+        std = tf.math.reduce_std(inputs, axis=1)
+        outputs = (inputs - mean[:, tf.newaxis]) / (std[:, tf.newaxis] + epsilon)
+        return outputs
+
+
 if __name__ == "__main__":
-    attention = MultiHeadAttention(4)
+    attention = MultiHeadAttention(4, 4, 4)
     test = tf.constant([[10.0, 1.4, 1.3, 4.2], [-5.4, 3.2, 1.7, 3.2], [1.6, 5.1, 6.3, 1.2]])
+
+    norm = NormLayer()
+    print(norm(test))
     print(attention(test))
 
