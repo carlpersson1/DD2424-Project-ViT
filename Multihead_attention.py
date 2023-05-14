@@ -1,3 +1,4 @@
+import keras.activations
 import tensorflow as tf
 from keras import layers, Model
 from keras.initializers.initializers import GlorotNormal
@@ -98,11 +99,41 @@ class NormLayer(Layer):
         return outputs
 
 
+class MLP(Layer):
+    def __init__(self):
+        super(MLP, self).__init__()
+        self.W1 = None
+        self.b1 = None
+        self.W2 = None
+        self.b2 = None
+
+    def build(self, input_shape):
+        # Called only once to create state of layer - Can be used to dynamically set input sizes
+        # Which initializer to use? Chose Xavier for the time being
+        initializer = tf.initializers.GlorotNormal()
+        self.W1 = self.add_weight(shape=(input_shape[-1], input_shape[-1]), initializer=initializer,
+                                       trainable=True)
+        self.W2 = self.add_weight(shape=(input_shape[-1], input_shape[-1]), initializer=initializer,
+                                  trainable=True)
+        self.b1 = self.add_weight(shape=(input_shape[-1],), initializer=initializer, trainable=True)
+        self.b2 = self.add_weight(shape=(input_shape[-1],), initializer=initializer, trainable=True)
+
+    def call(self, inputs):
+        # Normalize over hidden layers instead of training samples
+        outputs = tf.matmul(inputs, self.W1) + self.b1
+        outputs = keras.activations.gelu(outputs)
+        outputs = tf.matmul(outputs, self.W2) + self.b2
+        outputs = keras.activations.gelu(outputs)
+        return outputs
+
+
 if __name__ == "__main__":
     attention = MultiHeadAttention(4, 4, 4)
     test = tf.constant([[10.0, 1.4, 1.3, 4.2], [-5.4, 3.2, 1.7, 3.2], [1.6, 5.1, 6.3, 1.2]])
 
     norm = NormLayer()
+    mlp = MLP()
+    print(mlp(test))
     print(norm(test))
     print(attention(test))
 
