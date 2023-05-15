@@ -45,24 +45,21 @@ class DotProductAttention(Layer):
 
 
 class MultiHeadAttention(Layer):
-    def __init__(self, n_channels, query_size, key_size):
+    def __init__(self, n_channels):
         super(MultiHeadAttention, self).__init__()
         self.n_channels = n_channels
-        self.query_size = query_size
-        self.key_size = key_size
         self.linear_transform = None
-        self.reduced_embedding = None
         self.attention_layers = []
 
     def build(self, input_shape):
         if input_shape[1] % self.n_channels != 0:
             print("The embedding size needs to be divisible by the number of channels!")
             raise Exception
-        self.reduced_embedding = int(input_shape[1] / self.n_channels)
+        reduced_embedding = int(input_shape[1] / self.n_channels)
 
         # Create stack of Attention layers
         for i in range(self.n_channels):
-            self.attention_layers.append(DotProductAttention(self.query_size, self.key_size, self.reduced_embedding))
+            self.attention_layers.append(DotProductAttention(reduced_embedding, reduced_embedding, reduced_embedding))
 
         # Initialize the last linear transform
         initializer = tf.initializers.GlorotNormal()
@@ -100,8 +97,10 @@ class NormLayer(Layer):
 
 
 class MLP(Layer):
-    def __init__(self):
+    def __init__(self, hidden_units, dropout=0.0):
         super(MLP, self).__init__()
+        self.hidden_units = hidden_units
+        self.dropout = dropout
         self.W1 = None
         self.b1 = None
         self.W2 = None
@@ -111,29 +110,30 @@ class MLP(Layer):
         # Called only once to create state of layer - Can be used to dynamically set input sizes
         # Which initializer to use? Chose Xavier for the time being
         initializer = tf.initializers.GlorotNormal()
-        self.W1 = self.add_weight(shape=(input_shape[-1], input_shape[-1]), initializer=initializer,
+        self.W1 = self.add_weight(shape=(input_shape[-1], self.hidden_units), initializer=initializer,
                                        trainable=True)
-        self.W2 = self.add_weight(shape=(input_shape[-1], input_shape[-1]), initializer=initializer,
+        self.W2 = self.add_weight(shape=(self.hidden_units, input_shape[-1]), initializer=initializer,
                                   trainable=True)
-        self.b1 = self.add_weight(shape=(input_shape[-1],), initializer=initializer, trainable=True)
+        self.b1 = self.add_weight(shape=(self.hidden_units,), initializer=initializer, trainable=True)
         self.b2 = self.add_weight(shape=(input_shape[-1],), initializer=initializer, trainable=True)
 
-    def call(self, inputs):
+    def call(self, inputs, training):
         # Normalize over hidden layers instead of training samples
         outputs = tf.matmul(inputs, self.W1) + self.b1
         outputs = keras.activations.gelu(outputs)
+        outputs = keras.layers.Dropout(self.dropout, outputs.shape)(outputs, training)
         outputs = tf.matmul(outputs, self.W2) + self.b2
-        outputs = keras.activations.gelu(outputs)
+        outputs = keras.layers.Dropout(self.dropout, outputs.shape)(outputs, training)
         return outputs
 
 
 if __name__ == "__main__":
-    attention = MultiHeadAttention(4, 4, 4)
+    attention = MultiHeadAttention(4)
     test = tf.constant([[10.0, 1.4, 1.3, 4.2], [-5.4, 3.2, 1.7, 3.2], [1.6, 5.1, 6.3, 1.2]])
 
     norm = NormLayer()
-    mlp = MLP()
-    print(mlp(test))
+    mlp = MLP(5, 0.1)
+    print(mlp(test, False))
     print(norm(test))
     print(attention(test))
 
