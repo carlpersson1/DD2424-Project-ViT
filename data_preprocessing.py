@@ -159,7 +159,7 @@ def VIT_dataprepocessing_model_phase(
 
     layernormalized = normlayer(encoded_layer)
 
-    transformerprocessed = attentionlayer.call(layernormalized)
+    transformerprocessed = attentionlayer(layernormalized)
 
     transformerprocessed = layers.Add(transformerprocessed, encoded_layer)
 
