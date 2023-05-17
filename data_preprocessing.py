@@ -8,6 +8,7 @@ from typing import Dict, Union, Any
 
 
 def get_cifar_dataset_scaled(
+        batch_size = 32,
         key: str = "data_batch",
         testkey: str = "test_batch"
 ) -> Dict[str, Union[Union[Dict[str, Any], Dict[str, Any], Dict[str, Any]], Any]]:
@@ -61,9 +62,9 @@ def get_cifar_dataset_scaled(
         validation_data_images = (validation_data_images - train_data_mean) / train_data_std
         test_data_images = (testing_data_images - train_data_mean) / train_data_std
 
-        training_data = get_batches(**{'data': train_data_images, 'labels': full_training_labels, 'batch_size': 32})
-        validation_data = get_batches(**{'data': validation_data_images, 'labels': validation_data_labels, 'batch_size': 32})
-        testing_data = get_batches(**{'data': test_data_images, 'labels': np.array(testing_data_labels), 'batch_size': 32})
+        training_data = get_batches(**{'data': train_data_images, 'labels': full_training_labels, 'batch_size': batch_size})
+        validation_data = get_batches(**{'data': validation_data_images, 'labels': validation_data_labels, 'batch_size': batch_size})
+        testing_data = get_batches(**{'data': test_data_images, 'labels': np.array(testing_data_labels), 'batch_size': batch_size})
 
         training_data_tbret = {'images': [],
                                'labels': []}
@@ -73,15 +74,15 @@ def get_cifar_dataset_scaled(
                               'labels': []}
 
         for entry in training_data:
-            training_data_tbret['images'].append(entry['images'].reshape(32, 32, 32, 3))
+            training_data_tbret['images'].append(entry['images'].reshape(batch_size, 32, 32, 3))
             training_data_tbret['labels'].append(entry['labels'])
 
         for entry in validation_data:
-            validation_data_tbret['images'].append(entry['images'].reshape(32, 32, 32, 3))
+            validation_data_tbret['images'].append(entry['images'].reshape(batch_size, 32, 32, 3))
             validation_data_tbret['labels'].append(entry['labels'])
 
         for entry in testing_data:
-            testing_data_tbret['images'].append(entry['images'].reshape(32, 32, 32, 3))
+            testing_data_tbret['images'].append(entry['images'].reshape(batch_size, 32, 32, 3))
             testing_data_tbret['labels'].append(entry['labels'])
 
         return {'training_data': training_data_tbret,
@@ -106,7 +107,7 @@ def VIT_dataprepocessing_model_phase(
     image_size: int = 32,
     patch_qty: int = 32,
     size_per_patch: int = 8,
-    dimension_dense_projection: int = 256,
+    dimension_dense_projection: int = 16,
     dense_activation: str = "relu",
     data_inputs=None,
     data_outputs=10,
@@ -115,7 +116,7 @@ def VIT_dataprepocessing_model_phase(
 ) -> Model:
 
     input_dimensionality = 1 + patch_qty
-    inputs = Input(shape=(image_size, image_size, 3), batch_size=32)
+    inputs = Input(shape=(image_size, image_size, 3), batch_size=None)
 
     patch_qty = 16
     patches = Reshape((patch_qty, size_per_patch, size_per_patch, 3))(inputs)
@@ -129,7 +130,7 @@ def VIT_dataprepocessing_model_phase(
     )(flattened_patches)
 
     batch_size = x_train.shape[1]
-    cls = np.ones(
+    cls = np.zeros(
         (batch_size, 1, dimension_dense_projection), dtype="float32"
     )
     cls = tf.convert_to_tensor(cls)  # Convert to TensorFlow tensor
@@ -153,7 +154,7 @@ def VIT_dataprepocessing_model_phase(
 
     encoded_layer = positional_embeddings + sequential_vectors
 
-    attentionlayer = MultiHeadAttention(16)
+    attentionlayer = MultiHeadAttention(4)
 
     normlayer = NormLayer()
 
@@ -163,28 +164,35 @@ def VIT_dataprepocessing_model_phase(
 
     transformerprocessed = layers.Add()([transformerprocessed, encoded_layer])
 
-    layernormalized2 = normlayer(transformerprocessed)
+    layernormalized2 = NormLayer()(transformerprocessed)
 
-    mlpprocessed = MLP(100, dropout=0.0)(layernormalized2)
+    mlpprocessed = MLP(20, dropout=0.0)(layernormalized2)
 
     processed = layers.Add()([mlpprocessed, transformerprocessed])
 
-    outputs = layers.Dense(units=data_outputs,
-                           name='head',
-                           kernel_initializer=tf.keras.initializers.zeros)(processed)
+    outputs = layers.Softmax(axis=1)(layers.Dense(units=data_outputs,
+                           name='head')(processed)[:, 0, :])
 
     model = Model(inputs, outputs)
 
     print(model.summary())
 
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-    model.compile(optimizer='adam',
-                  loss=loss_fn,
+    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+    model.compile(optimizer=optimizer,
+                  loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
-    model.fit(x_train, y_train, epochs=5)
+    train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    valid_data = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
-    model.evaluate(x_test, y_test, verbose=2)
+    stats = model.fit(train_data, epochs=50, batch_size=batch_size)
+
+    preds = model.predict(valid_data)
+
+    evaluated = model.evaluate(valid_data, verbose=2)
+
+    print(stats)
+    print(evaluated)
     # return inputs, positional_embeddings + sequential_vectors
     # return Model(
     #     inputs=inputs, outputs=positional_embeddings + sequential_vectors
@@ -197,6 +205,7 @@ from keras.layers import Reshape, Input, Dense, Layer
 import numpy as np
 import pickle
 from typing import Dict, Union, Any
+
 
 
 class DotProductAttention(Layer):
@@ -273,16 +282,15 @@ class MultiHeadAttention(Layer):
 
         return output
 
-
 class NormLayer(Layer):
     def __init__(self):
         super(NormLayer, self).__init__()
 
     def call(self, inputs, epsilon=10 ** (-8)):
         # Normalize over hidden layers instead of training samples
-        mean = tf.reduce_mean(inputs, axis=2)
-        std = tf.math.reduce_std(inputs, axis=2)
-        outputs = (inputs - mean[:, :, tf.newaxis]) / (std[:, :, tf.newaxis] + epsilon)
+        mean = tf.reduce_mean(inputs, axis=1)
+        std = tf.math.reduce_std(inputs, axis=1)
+        outputs = (inputs - mean[:, tf.newaxis]) / (std[:, tf.newaxis] + epsilon)
         return outputs
 
 
@@ -315,3 +323,4 @@ class MLP(Layer):
         outputs = tf.matmul(outputs, self.W2) + self.b2
         outputs = keras.layers.Dropout(self.dropout, outputs.shape)(outputs, training)
         return outputs
+
