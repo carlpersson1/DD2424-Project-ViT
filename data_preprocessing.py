@@ -158,18 +158,18 @@ def VIT_dataprepocessing_model_phase(
     normlayer = NormLayer()
 
     layernormalized = normlayer(encoded_layer)
-    
+
     transformerprocessed = attentionlayer(layernormalized)
 
-    transformerprocessed = layers.Add(transformerprocessed, encoded_layer)
+    transformerprocessed = layers.Add()([transformerprocessed, encoded_layer])
 
-    layernormalized2 = NormLayer(transformerprocessed)
+    layernormalized2 = normlayer(transformerprocessed)
 
     mlpprocessed = MLP(100, dropout=0.0)(layernormalized2)
 
-    processed = layers.Add(mlpprocessed, transformerprocessed)
+    processed = layers.Add()([mlpprocessed, transformerprocessed])
 
-    outputs = layers.Dense(units=len(data_outputs),
+    outputs = layers.Dense(units=data_outputs,
                            name='head',
                            kernel_initializer=tf.keras.initializers.zeros)(processed)
 
@@ -280,9 +280,9 @@ class NormLayer(Layer):
 
     def call(self, inputs, epsilon=10 ** (-8)):
         # Normalize over hidden layers instead of training samples
-        mean = tf.reduce_mean(inputs, axis=1)
-        std = tf.math.reduce_std(inputs, axis=1)
-        outputs = (inputs - mean[:, tf.newaxis]) / (std[:, tf.newaxis] + epsilon)
+        mean = tf.reduce_mean(inputs, axis=2)
+        std = tf.math.reduce_std(inputs, axis=2)
+        outputs = (inputs - mean[:, :, tf.newaxis]) / (std[:, :, tf.newaxis] + epsilon)
         return outputs
 
 
