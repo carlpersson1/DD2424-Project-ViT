@@ -153,12 +153,12 @@ def VIT_dataprepocessing_model_phase(
 
     encoded_layer = positional_embeddings + sequential_vectors
 
-    attentionlayer = MultiHeadAttention(17)
+    attentionlayer = MultiHeadAttention(16)
 
     normlayer = NormLayer()
 
     layernormalized = normlayer(encoded_layer)
-
+    
     transformerprocessed = attentionlayer(layernormalized)
 
     transformerprocessed = layers.Add(transformerprocessed, encoded_layer)
@@ -228,9 +228,8 @@ class DotProductAttention(Layer):
         Query = tf.matmul(inputs, self.W_query)
         Key = tf.matmul(inputs, self.W_key)
         Value = tf.matmul(inputs, self.W_value)
-
         # Calculate similarity measure and apply softmax along columns
-        similarity = tf.nn.softmax(tf.matmul(Query, tf.transpose(Key)), axis=1)
+        similarity = tf.nn.softmax(tf.matmul(Query, tf.transpose(Key, perm=[0, 2, 1])), axis=1)
         attention_matrix = tf.matmul(tf.math.divide(similarity, self.key_size ** 0.5), Value)
         return attention_matrix
 
@@ -243,10 +242,10 @@ class MultiHeadAttention(Layer):
         self.attention_layers = []
 
     def build(self, input_shape):
-        if input_shape[1] % self.n_channels != 0:
+        if input_shape[-1] % self.n_channels != 0:
             print("The embedding size needs to be divisible by the number of channels!")
             raise Exception
-        reduced_embedding = int(input_shape[1] / self.n_channels)
+        reduced_embedding = int(input_shape[-1] / self.n_channels)
 
         # Create stack of Attention layers
         for i in range(self.n_channels):
@@ -254,7 +253,7 @@ class MultiHeadAttention(Layer):
 
         # Initialize the last linear transform
         initializer = tf.initializers.GlorotNormal()
-        self.linear_transform = self.add_weight(shape=(input_shape[1], input_shape[1]), initializer=initializer,
+        self.linear_transform = self.add_weight(shape=(input_shape[-1], input_shape[-1]), initializer=initializer,
                                        trainable=True)
 
     def call(self, inputs):
@@ -265,7 +264,7 @@ class MultiHeadAttention(Layer):
 
             # Concatenate the result
             if i > 0:
-                concatenated_result = tf.concat([concatenated_result, attention_output], axis=1)
+                concatenated_result = tf.concat([concatenated_result, attention_output], axis=2)
             else:
                 concatenated_result = attention_output
 
