@@ -49,7 +49,7 @@ def getdata(batch_size=32):
 def run():
 
     baseline_hyperparams = {'n_channels_encoder_block': 2,
-                            'hidden_nodes_encoder_block': 40,
+                            # 'hidden_nodes_encoder_block': 40,
                             'dropout_encoder_block': 0.1,
                             'epochs':50,
                             'lr': 0.001,
@@ -62,7 +62,7 @@ def run():
 
     def objective(trial):
         n_channels_encoder_block = trial.suggest_categorical('n_channels_encoder_block', [2, 4, 8])
-        hidden_nodes_encoder_block = trial.suggest_int('hidden_nodes_encoder_block', 2, 128)
+        # hidden_nodes_encoder_block = trial.suggest_int('hidden_nodes_encoder_block', 2, 128)
         dropout_encoder_block = trial.suggest_float('dropout_encoder_block', 0.01, 0.3)
         patch_qty = trial.suggest_categorical('patch_qty', [4, 16, 64])
         n_encoder_blocks = trial.suggest_int('n_encoder_blocks', 2, 12)
