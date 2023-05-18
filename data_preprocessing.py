@@ -102,17 +102,24 @@ def get_cifar_dataset_scaled(
 def VIT_dataprepocessing_model_phase(
     x_train,
     y_train,
+    x_val,
+    y_val,
     x_test,
     y_test,
+    trial,
+    monitor,
     image_size: int = 32,
+    n_channels_encoder_block=12,
+    hidden_nodes_encoder_block=960,
+    dropout_encoder_block=0.1,
     patch_qty: int = 16,
-    size_per_patch: int = 8,
+    n_encoder_blocks = 12,
+    epochs=5,
+    lr=0.001,
     dimension_dense_projection: int = 240,
+    size_per_patch: int = 8,
     dense_activation: str = "gelu",
-    data_inputs=None,
-    data_outputs=10,
-    image_height=16,
-    image_width=16,
+    data_outputs=10
 ) -> Model:
 
     input_dimensionality = 1 + patch_qty
@@ -137,45 +144,56 @@ def VIT_dataprepocessing_model_phase(
         [-1, patch_qty + 1, dimension_dense_projection],
     )
 
-    positions = tf.expand_dims(
-        tf.range(patch_qty + 1, dtype=tf.float32), axis=0
-    )
-    positional_embeddings = layers.Embedding(
-        input_dim=input_dimensionality, output_dim=dimension_dense_projection
-    )(positions)
+    # positions = tf.expand_dims(
+    #     tf.range(patch_qty + 1, dtype=tf.float32), axis=0
+    # )
+    # positional_embeddings = layers.Embedding(
+    #     input_dim=input_dimensionality, output_dim=dimension_dense_projection
+    # )(positions)
 
     encoded_layer = PositionalEmbedding()(sequential_vectors)
     encoder_output = encoded_layer
 
-    n_encoder_blocks = 12
     for i in range(n_encoder_blocks):
-        encoder_output = EncoderBlock(12, 4 * dimension_dense_projection, dropout=0.1)(encoder_output)
+        encoder_output = EncoderBlock(n_channels_encoder_block,
+                                      hidden_nodes_encoder_block,
+                                      dropout=dropout_encoder_block)(encoder_output)
 
     outputs = layers.Softmax(axis=1)(layers.Dense(units=data_outputs, name='head')(encoder_output[:, 0]))
     model = Model(inputs, outputs)
 
     print(model.summary())
 
-    optimizer = tf.keras.optimizers.Adam()
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(optimizer=optimizer,
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
     train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    valid_data = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+    valid_data = tf.data.Dataset.from_tensor_slices((x_val, y_val))
+    testing_data = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
-    stats = model.fit(train_data, validation_data=valid_data, epochs=50, batch_size=batch_size)
+    from optuna.integration import TFKerasPruningCallback
 
-    preds = model.predict(valid_data)
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(patience=2),
+        TFKerasPruningCallback(trial, monitor),
+    ]
 
-    evaluated = model.evaluate(valid_data, verbose=2)
+    stats = model.fit(train_data,
+                      validation_data=valid_data,
+                      epochs=epochs,
+                      batch_size=batch_size,
+                      callbacks=callbacks)
 
+    evaluation_results = model.evaluate(valid_data, verbose=2)
+
+    testing_results = model.evaluate(testing_data, verbose=2)
     print(stats)
-    print(evaluated)
-    # return inputs, positional_embeddings + sequential_vectors
-    # return Model(
-    #     inputs=inputs, outputs=positional_embeddings + sequential_vectors
-    # )
+    print(evaluation_results)
+    print(testing_results)
+
+    return stats, evaluation_results, testing_results
 
 import keras.activations
 import tensorflow as tf
