@@ -92,7 +92,6 @@ def run():
                   'x_test': testing_data_inputs,
                   'y_test': testing_data_outputs,
                   'n_channels_encoder_block': n_channels_encoder_block,
-                  'hidden_nodes_encoder_block': hidden_nodes_encoder_block,
                   'dropout_encoder_block': dropout_encoder_block,
                   'patch_qty': patch_qty,
                   'n_encoder_blocks': n_encoder_blocks,
