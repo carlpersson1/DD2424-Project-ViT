@@ -156,7 +156,7 @@ def VIT_dataprepocessing_model_phase(
 
     for i in range(n_encoder_blocks):
         encoder_output = EncoderBlock(n_channels_encoder_block,
-                                      hidden_nodes_encoder_block,
+                                      4 * dimension_dense_projection,
                                       dropout=dropout_encoder_block)(encoder_output)
 
     outputs = layers.Softmax(axis=1)(layers.Dense(units=data_outputs, name='head')(encoder_output[:, 0]))
