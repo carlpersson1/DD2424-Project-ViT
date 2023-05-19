@@ -106,14 +106,14 @@ def VIT_dataprepocessing_model_phase(
     y_val,
     x_test,
     y_test,
-    trial,
-    monitor,
+    trial=None,
+    monitor=None,
     image_size: int = 32,
     n_channels_encoder_block=12,
-    hidden_nodes_encoder_block=960,
     dropout_encoder_block=0.1,
+    L2_reg_encoder_block=0.001,
     patch_qty: int = 16,
-    n_encoder_blocks = 12,
+    n_encoder_blocks=12,
     epochs=5,
     lr=0.001,
     dimension_dense_projection: int = 240,
@@ -156,7 +156,8 @@ def VIT_dataprepocessing_model_phase(
     for i in range(n_encoder_blocks):
         encoder_output = EncoderBlock(n_channels_encoder_block,
                                       4 * dimension_dense_projection,
-                                      dropout=dropout_encoder_block)(encoder_output)
+                                      dropout=dropout_encoder_block,
+                                      L2_reg=L2_reg_encoder_block)(encoder_output)
 
     outputs = layers.Softmax(axis=1)(layers.Dense(units=data_outputs, name='head')(encoder_output[:, 0]))
     model = Model(inputs, outputs)
@@ -172,18 +173,23 @@ def VIT_dataprepocessing_model_phase(
     valid_data = tf.data.Dataset.from_tensor_slices((x_val, y_val))
     testing_data = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
-    from optuna.integration import TFKerasPruningCallback
+    if trial is not None:
+        from optuna.integration import TFKerasPruningCallback
+        callbacks = [
+            tf.keras.callbacks.EarlyStopping(patience=2),
+            TFKerasPruningCallback(trial, monitor),
+        ]
 
-    callbacks = [
-        tf.keras.callbacks.EarlyStopping(patience=2),
-        TFKerasPruningCallback(trial, monitor),
-    ]
-
-    stats = model.fit(train_data,
-                      validation_data=valid_data,
-                      epochs=epochs,
-                      batch_size=batch_size,
-                      callbacks=callbacks)
+        stats = model.fit(train_data,
+                          validation_data=valid_data,
+                          epochs=epochs,
+                          batch_size=batch_size,
+                          callbacks=callbacks)
+    else:
+        stats = model.fit(train_data,
+                          validation_data=valid_data,
+                          epochs=epochs,
+                          batch_size=batch_size)
 
     evaluation_results = model.evaluate(valid_data, verbose=2)
 
@@ -204,8 +210,9 @@ from typing import Dict, Union, Any
 
 
 class DotProductAttention(Layer):
-    def __init__(self, query_size, key_size, value_size):
+    def __init__(self, query_size, key_size, value_size, L2_reg=0.001):
         super(DotProductAttention, self).__init__()
+        self.L2_reg = L2_reg
         self.W_query = None
         self.W_key = None
         self.W_value = None
@@ -219,11 +226,11 @@ class DotProductAttention(Layer):
         # Which initializer to use? Chose Xavier for the time being
         initializer = tf.initializers.GlorotNormal()
         self.W_query = self.add_weight(shape=(input_shape[-1], self.query_size), initializer=initializer,
-                                       trainable=True)
+                                       trainable=True, regularizer=tf.keras.regularizers.L2(self.L2_reg))
         self.W_key = self.add_weight(shape=(input_shape[-1], self.key_size), initializer=initializer,
-                                       trainable=True)
+                                       trainable=True, regularizer=tf.keras.regularizers.L2(self.L2_reg))
         self.W_value = self.add_weight(shape=(input_shape[-1], self.value_size), initializer=initializer,
-                                       trainable=True)
+                                       trainable=True, regularizer=tf.keras.regularizers.L2(self.L2_reg))
 
     def call(self, inputs, *args, **kwargs):
         # Did not implement a mask - Don't know if it is required
@@ -232,19 +239,21 @@ class DotProductAttention(Layer):
         Query = tf.matmul(inputs, self.W_query)
         Key = tf.matmul(inputs, self.W_key)
         Value = tf.matmul(inputs, self.W_value)
+
         # Calculate similarity measure and apply softmax along columns
         similarity = tf.matmul(Query, tf.transpose(Key, perm=[0, 2, 1]))
-        similarity = tf.nn.softmax(tf.math.divide(similarity, tf.cast(self.key_size, dtype=inputs.dtype) ** 0.5), axis=2)
+        similarity = tf.nn.softmax(tf.math.divide(similarity, tf.cast(self.key_size, dtype=inputs.dtype) ** 0.5), axis=-1)
         attention_matrix = tf.matmul(similarity, Value)
         return attention_matrix
 
 
 class MultiHeadAttention(Layer):
-    def __init__(self, n_channels):
+    def __init__(self, n_channels, L2_reg=0.001):
         super(MultiHeadAttention, self).__init__()
         self.n_channels = n_channels
         self.linear_transform = None
         self.attention_layers = []
+        self.L2_reg = L2_reg
 
     def build(self, input_shape):
         if input_shape[-1] % self.n_channels != 0:
@@ -253,11 +262,12 @@ class MultiHeadAttention(Layer):
         reduced_embedding = int(input_shape[-1] / self.n_channels)
         # Create stack of Attention layers
         for i in range(self.n_channels):
-            self.attention_layers.append(DotProductAttention(reduced_embedding, reduced_embedding, reduced_embedding))
+            self.attention_layers.append(DotProductAttention(reduced_embedding, reduced_embedding,
+                                                             reduced_embedding, self.L2_reg))
         # Initialize the last linear transform
         initializer = tf.initializers.GlorotNormal()
         self.linear_transform = self.add_weight(shape=(input_shape[-1], input_shape[-1]), initializer=initializer,
-                                       trainable=True)
+                                       trainable=True, regularizer=tf.keras.regularizers.L2(self.L2_reg))
 
     def call(self, inputs, *args, **kwargs):
         concatenated_result = []
@@ -295,10 +305,11 @@ class NormLayer(Layer):
 
 
 class MLP(Layer):
-    def __init__(self, hidden_units, dropout=0.0):
+    def __init__(self, hidden_units, dropout=0.0, L2_reg=0.001):
         super(MLP, self).__init__()
         self.hidden_units = hidden_units
         self.dropout = dropout
+        self.L2_reg = L2_reg
         self.W1 = None
         self.b1 = None
         self.W2 = None
@@ -309,9 +320,9 @@ class MLP(Layer):
         # Which initializer to use? Chose Xavier for the time being
         initializer = tf.initializers.GlorotNormal()
         self.W1 = self.add_weight(shape=(input_shape[-1], self.hidden_units), initializer=initializer,
-                                       trainable=True)
+                                       trainable=True, regularizer=tf.keras.regularizers.L2(self.L2_reg))
         self.W2 = self.add_weight(shape=(self.hidden_units, input_shape[-1]), initializer=initializer,
-                                  trainable=True)
+                                  trainable=True, regularizer=tf.keras.regularizers.L2(self.L2_reg))
         self.b1 = self.add_weight(shape=(self.hidden_units,), initializer=initializer, trainable=True)
         self.b2 = self.add_weight(shape=(input_shape[-1],), initializer=initializer, trainable=True)
 
@@ -327,17 +338,19 @@ class MLP(Layer):
 
 
 class EncoderBlock(Layer):
-    def __init__(self, n_channels, hidden_nodes, dropout=0.0):
+    def __init__(self, n_channels, hidden_nodes, dropout=0.0, L2_reg=0.001):
         super(EncoderBlock, self).__init__()
-        self.MLA = MultiHeadAttention(n_channels)
-        self.MLP = MLP(hidden_nodes, dropout)
+        self.MLA = MultiHeadAttention(n_channels, L2_reg)
+        self.MLP = MLP(hidden_nodes, dropout, L2_reg)
         self.LayerNorm1 = NormLayer()
         self.LayerNorm2 = NormLayer()
+        self.drop_layer = keras.layers.Dropout(dropout)
 
     def call(self, inputs, *args, **kwargs):
         initial_inputs = inputs
         normalized_inputs = self.LayerNorm1(inputs)
         attention_output = self.MLA(normalized_inputs)
+        attention_output = self.drop_layer(attention_output)
         combined_output = attention_output + initial_inputs
         normalized_inputs = self.LayerNorm2(combined_output)
         feed_forward_output = self.MLP(normalized_inputs)

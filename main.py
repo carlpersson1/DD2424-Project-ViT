@@ -104,7 +104,7 @@ def run():
 
         results = VIT_dataprepocessing_model_phase(**config)
         
-        results_per_trial[trial.number] = results
+        results_per_trial[trial.number] = results[1:]
 
         return results[1][0]
 
@@ -119,6 +119,30 @@ def run():
     final_results_best_model = VIT_dataprepocessing_model_phase(**study.best_params)
 
     # print(data_preprocessed_model.summary())
+
+
+def test_run():
+    if __name__ == '__main__':
+        training_data_inputs, training_data_outputs, validation_data_inputs, \
+            validation_data_outputs, testing_data_inputs, testing_data_outputs = getdata(batch_size=128)
+
+        config = {'x_train': training_data_inputs,
+                  'y_train': training_data_outputs,
+                  'x_val': validation_data_inputs,
+                  'y_val': validation_data_outputs,
+                  'x_test': testing_data_inputs,
+                  'y_test': testing_data_outputs,
+                  'n_channels_encoder_block': 8,
+                  'dropout_encoder_block': 0.1,
+                  'L2_reg_encoder_block': 0.001,
+                  'patch_qty': 64,
+                  'n_encoder_blocks': 12,
+                  'dimension_dense_projection': 96,
+                  'size_per_patch': 4,
+                  'epochs': 200,
+                  'lr': 0.001}
+
+        results = VIT_dataprepocessing_model_phase(**config)
 
 
 if __name__ == '__main__':

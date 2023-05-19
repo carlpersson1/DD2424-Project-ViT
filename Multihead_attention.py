@@ -195,4 +195,3 @@ class ConvMixer(Layer):
         output = self.batch_norm2(point_out)
 
         return output
-
