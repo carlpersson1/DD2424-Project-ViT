@@ -5,7 +5,7 @@ from tensorflow.keras.layers import Reshape, Input, Dense
 import numpy as np
 import pickle
 from typing import Dict, Union, Any
-
+from Multihead_attention import ConvMixer
 
 def get_cifar_dataset_scaled(
         batch_size = 32,
@@ -122,7 +122,6 @@ def VIT_dataprepocessing_model_phase(
     data_outputs=10
 ) -> Model:
 
-    input_dimensionality = 1 + patch_qty
     inputs = Input(shape=(image_size, image_size, 3), batch_size=None)
 
     patches = Reshape((patch_qty, size_per_patch, size_per_patch, 3))(inputs)

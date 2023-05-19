@@ -106,7 +106,7 @@ def run():
         
         results_per_trial[trial.number] = results
 
-        return results[1][1]
+        return results[1][0]
 
     study = optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner(n_startup_trials=10))
 

@@ -175,3 +175,24 @@ class PositionalEmbedding(Layer):
         return inputs + self.pos_embedding
 
 
+class ConvMixer(Layer):
+    def __init__(self, kernel_size):
+        super(ConvMixer, self).__init__()
+        self.depth_conv = keras.layers.convolutional.DepthwiseConv2D(kernel_size=kernel_size, padding='same', trainable=True)
+        self.point_conv = keras.layers.convolutional.Convolution2D(3, (1, 1), trainable=True)
+        self.GELU = keras.activations.gelu
+        self.batch_norm1 = keras.layers.BatchNormalizationV2(trainable=True)
+        self.batch_norm2 = keras.layers.BatchNormalizationV2(trainable=True)
+
+    def call(self, inputs, *args, **kwargs):
+
+        depth_conv = self.depth_conv(inputs)
+        depth_out = self.GELU(depth_conv)
+        depth_out = self.batch_norm1(depth_out)
+        mid_point = depth_out + inputs
+        point_conv = self.point_conv(mid_point)
+        point_out = self.GELU(point_conv)
+        output = self.batch_norm2(point_out)
+
+        return output
+
