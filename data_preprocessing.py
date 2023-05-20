@@ -201,7 +201,7 @@ def VIT_dataprepocessing_model_phase(
     return stats, evaluation_results, testing_results
 
 
-def ViT_Hybrid_Architecture(
+def ViT_Hierarchical_Architecture(
     x_train,
     y_train,
     x_val,
@@ -214,7 +214,7 @@ def ViT_Hybrid_Architecture(
     n_channels_encoder_block=12,
     dropout_encoder_block=0.1,
     L2_reg_encoder_block=0.001,
-    gauss_noise=0.0,
+    gauss_noise=0.1,
     patch_qty: int = 16,
     n_encoder_blocks=12,
     kernel_size=(3, 3),
@@ -228,47 +228,61 @@ def ViT_Hybrid_Architecture(
 
     inputs = Input(shape=(image_size, image_size, 3), batch_size=None)
 
-    # Apply gaussian noise and image flipping to improve diversity of inputs
+    # Apply gaussian noise and image flipping to increase diversity of inputs
     modified_inputs = TrainingModifier(gauss_noise)(inputs)
 
-    # Patch embedding through a regular convolutional layer
-    convolutional_patches = tf.keras.layers.Convolution2D(dimension_dense_projection,
-                                                          kernel_size=size_per_patch,
-                                                          strides=size_per_patch)(modified_inputs)
+    # Feature extraction
+    feat = tf.keras.layers.Conv2D(32, kernel_size, padding='same', activation='gelu')(modified_inputs)
+    feat = tf.keras.layers.Conv2D(64, kernel_size, padding='same', activation='gelu')(feat)
+    feat = tf.keras.layers.Conv2D(128, kernel_size, padding='same', activation='gelu')(feat)
 
-    convmixer = ConvMixer(dimension_dense_projection, kernel_size)(convolutional_patches)
+    # Extract patches properly
+    patches = tf.image.extract_patches(
+        images=feat,
+        sizes=[1, size_per_patch, size_per_patch, 1],
+        strides=[1, size_per_patch, size_per_patch, 1],
+        rates=[1, 1, 1, 1],
+        padding="VALID",
+    )
 
-    # Flatten the output of the convmixer
     flattened_patches = Reshape(
-        (patch_qty, dimension_dense_projection)
-    )(convmixer)
-
-    # Maybe not necessary
+        (patch_qty, size_per_patch * size_per_patch * 128)
+    )(patches)
 
     projection = Dense(
         units=dimension_dense_projection, activation=dense_activation
     )(flattened_patches)
 
-
-    projection = CLSTokenLayer(dimension_dense_projection)(flattened_patches)
-
     encoded_layer = PositionalEmbedding()(projection)
 
     encoded_layer = tf.keras.layers.Dropout(dropout_encoder_block)(encoded_layer)
     encoder_output = encoded_layer
-
-    for i in range(n_encoder_blocks):
+    for i in range(2):
         encoder_output = EncoderBlock(n_channels_encoder_block,
                                       4 * dimension_dense_projection,
                                       dropout=dropout_encoder_block,
                                       L2_reg=L2_reg_encoder_block)(encoder_output)
+    encoder_output = Reshape((int(patch_qty / 4), int(4 * dimension_dense_projection)))(encoder_output)
+    encoder_output = Dense(units=2 * dimension_dense_projection, activation=dense_activation)(encoder_output)
+    for i in range(2):
+        encoder_output = EncoderBlock(n_channels_encoder_block,
+                                      8 * dimension_dense_projection,
+                                      dropout=dropout_encoder_block,
+                                      L2_reg=L2_reg_encoder_block)(encoder_output)
 
-    outputs = layers.Softmax(axis=1)(layers.Dense(units=data_outputs, name='head')(encoder_output[:, 0]))
+    encoder_output = Reshape((int(patch_qty / 16), int(8 * dimension_dense_projection)))(encoder_output)
+    encoder_output = Dense(units=4 * dimension_dense_projection, activation=dense_activation)(encoder_output)
+    for i in range(2):
+        encoder_output = EncoderBlock(n_channels_encoder_block,
+                                      16 * dimension_dense_projection,
+                                      dropout=dropout_encoder_block,
+                                      L2_reg=L2_reg_encoder_block)(encoder_output)
+    final_encoder_output = tf.keras.layers.GlobalAvgPool1D()(encoder_output)
+    outputs = layers.Softmax(axis=1)(layers.Dense(units=data_outputs, name='head')(final_encoder_output))
     model = Model(inputs, outputs)
 
     print(model.summary())
 
-    batch_size = x_train.shape[1]
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(optimizer=optimizer,
                   loss='categorical_crossentropy',
@@ -278,10 +292,24 @@ def ViT_Hybrid_Architecture(
     valid_data = tf.data.Dataset.from_tensor_slices((x_val, y_val))
     testing_data = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
-    stats = model.fit(train_data,
-                      validation_data=valid_data,
-                      epochs=epochs,
-                      batch_size=batch_size)
+    batch_size = x_train.shape[1]
+    if trial is not None:
+        from optuna.integration import TFKerasPruningCallback
+        callbacks = [
+            tf.keras.callbacks.EarlyStopping(patience=2),
+            TFKerasPruningCallback(trial, monitor),
+        ]
+
+        stats = model.fit(train_data,
+                          validation_data=valid_data,
+                          epochs=epochs,
+                          batch_size=batch_size,
+                          callbacks=callbacks)
+    else:
+        stats = model.fit(train_data,
+                          validation_data=valid_data,
+                          epochs=epochs,
+                          batch_size=batch_size)
 
     evaluation_results = model.evaluate(valid_data, verbose=2)
 

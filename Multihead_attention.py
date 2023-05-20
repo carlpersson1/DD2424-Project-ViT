@@ -212,3 +212,4 @@ class ConvMixer(Layer):
         point_out = self.GELU(point_conv)
         output = self.batch_norm2(point_out)
         return output
+

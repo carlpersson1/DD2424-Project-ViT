@@ -1,6 +1,6 @@
 
 import numpy as np
-from data_preprocessing import get_cifar_dataset_scaled, VIT_dataprepocessing_model_phase, ViT_Hybrid_Architecture
+from data_preprocessing import get_cifar_dataset_scaled, VIT_dataprepocessing_model_phase, ViT_Hierarchical_Architecture
 import optuna
 
 def getdata(batch_size=32):
@@ -126,7 +126,7 @@ def test_run():
         training_data_inputs, training_data_outputs, validation_data_inputs, \
             validation_data_outputs, testing_data_inputs, testing_data_outputs = getdata(batch_size=128)
 
-        config = {'x_train': training_data_inputs,
+        ViTconfig = {'x_train': training_data_inputs,
                   'y_train': training_data_outputs,
                   'x_val': validation_data_inputs,
                   'y_val': validation_data_outputs,
@@ -142,7 +142,24 @@ def test_run():
                   'epochs': 50,
                   'lr': 0.001}
 
-        results = VIT_dataprepocessing_model_phase(**config)
+        Hybridconfig = {'x_train': training_data_inputs,
+                     'y_train': training_data_outputs,
+                     'x_val': validation_data_inputs,
+                     'y_val': validation_data_outputs,
+                     'x_test': testing_data_inputs,
+                     'y_test': testing_data_outputs,
+                     'n_channels_encoder_block': 8,
+                     'dropout_encoder_block': 0.1,
+                     'L2_reg_encoder_block': 0.000,
+                     'patch_qty': 256,
+                     'n_encoder_blocks': 6,
+                     'dimension_dense_projection': 48,
+                     'size_per_patch': 2,
+                     'epochs': 50,
+                     'lr': 0.001}
+
+        results = ViT_Hierarchical_Architecture(**Hybridconfig)
+        results = VIT_dataprepocessing_model_phase(**ViTconfig)
 
 
 if __name__ == '__main__':
