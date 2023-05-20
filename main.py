@@ -1,6 +1,6 @@
 
 import numpy as np
-from data_preprocessing import get_cifar_dataset_scaled, VIT_dataprepocessing_model_phase
+from data_preprocessing import get_cifar_dataset_scaled, VIT_dataprepocessing_model_phase, ViT_Hybrid_Architecture
 import optuna
 
 def getdata(batch_size=32):
@@ -134,14 +134,15 @@ def test_run():
                   'y_test': testing_data_outputs,
                   'n_channels_encoder_block': 8,
                   'dropout_encoder_block': 0.1,
-                  'L2_reg_encoder_block': 0.001,
+                  'L2_reg_encoder_block': 0.000,
                   'patch_qty': 64,
-                  'n_encoder_blocks': 12,
-                  'dimension_dense_projection': 96,
+                  'n_encoder_blocks': 6,
+                  'dimension_dense_projection': 128,
                   'size_per_patch': 4,
-                  'epochs': 200,
+                  'epochs': 50,
                   'lr': 0.001}
 
+        results = ViT_Hybrid_Architecture(**config)
         results = VIT_dataprepocessing_model_phase(**config)
 
 
