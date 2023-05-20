@@ -142,7 +142,6 @@ def test_run():
                   'epochs': 50,
                   'lr': 0.001}
 
-        results = ViT_Hybrid_Architecture(**config)
         results = VIT_dataprepocessing_model_phase(**config)
 
 
