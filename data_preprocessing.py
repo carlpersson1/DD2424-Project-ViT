@@ -112,7 +112,7 @@ def VIT_dataprepocessing_model_phase(
     n_channels_encoder_block=12,
     dropout_encoder_block=0.1,
     L2_reg_encoder_block=0.001,
-    gauss_noise=0.0,
+    gauss_noise=0.1,
     patch_qty: int = 16,
     n_encoder_blocks=12,
     epochs=5,
@@ -191,6 +191,7 @@ def VIT_dataprepocessing_model_phase(
                           epochs=epochs,
                           batch_size=batch_size)
 
+    #np.save('ModelStats/VanillaViT.npy', stats.history)
     evaluation_results = model.evaluate(valid_data, verbose=2)
 
     testing_results = model.evaluate(testing_data, verbose=2)
@@ -311,6 +312,7 @@ def ViT_Hierarchical_Architecture(
                           epochs=epochs,
                           batch_size=batch_size)
 
+    #np.save('ModelStats/HierarchicalViT.npy', stats.history)
     evaluation_results = model.evaluate(valid_data, verbose=2)
 
     testing_results = model.evaluate(testing_data, verbose=2)

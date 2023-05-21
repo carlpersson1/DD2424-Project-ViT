@@ -1,4 +1,4 @@
-
+import matplotlib.pyplot as plt
 import numpy as np
 from data_preprocessing import get_cifar_dataset_scaled, VIT_dataprepocessing_model_phase, ViT_Hierarchical_Architecture
 import optuna
@@ -134,12 +134,12 @@ def test_run():
                   'y_test': testing_data_outputs,
                   'n_channels_encoder_block': 8,
                   'dropout_encoder_block': 0.1,
-                  'L2_reg_encoder_block': 0.000,
+                  'L2_reg_encoder_block': 0.0006,
                   'patch_qty': 64,
                   'n_encoder_blocks': 6,
                   'dimension_dense_projection': 128,
                   'size_per_patch': 4,
-                  'epochs': 50,
+                  'epochs': 100,
                   'lr': 0.001}
 
         Hybridconfig = {'x_train': training_data_inputs,
@@ -150,16 +150,51 @@ def test_run():
                      'y_test': testing_data_outputs,
                      'n_channels_encoder_block': 8,
                      'dropout_encoder_block': 0.1,
-                     'L2_reg_encoder_block': 0.000,
+                     'L2_reg_encoder_block': 0.00,
                      'patch_qty': 256,
                      'n_encoder_blocks': 6,
                      'dimension_dense_projection': 48,
                      'size_per_patch': 2,
-                     'epochs': 50,
+                     'epochs': 100,
                      'lr': 0.001}
 
-        results = ViT_Hierarchical_Architecture(**Hybridconfig)
         results = VIT_dataprepocessing_model_phase(**ViTconfig)
+        results = ViT_Hierarchical_Architecture(**Hybridconfig)
+
+
+def plot():
+    # Get model train data
+    dict = np.load('ModelStats/VanillaViT.npy', allow_pickle=True).item()
+    van_loss = dict['loss']
+    van_acc = dict['accuracy']
+    van_val_loss = dict['val_loss']
+    van_val_acc = dict['val_accuracy']
+    dict = np.load('ModelStats/HierarchicalViT.npy', allow_pickle=True).item()
+    hier_loss = dict['loss']
+    hier_acc = dict['accuracy']
+    hier_val_loss = dict['val_loss']
+    hier_val_acc = dict['val_accuracy']
+
+    # Plot
+    x = np.arange(0, 100, 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.plot(x, van_acc, label='Vanilla ViT (train)')
+    ax1.plot(x, hier_acc, label='Hierarchical ViT (train)')
+    ax1.plot(x, van_val_acc, label='Vanilla ViT (validation)')
+    ax1.plot(x, hier_val_acc, label='Hierarchical ViT (validation)')
+    ax1.set_title('Accuracy during training')
+    ax1.set_xlabel('Number of Epochs')
+    ax1.set_ylabel('Accuracy')
+    ax1.legend()
+    ax2.plot(x, van_loss, label='Vanilla ViT (train)')
+    ax2.plot(x, hier_loss, label='Hierarchical ViT (train)')
+    ax2.plot(x, van_val_loss, label='Vanilla ViT (validation)')
+    ax2.plot(x, hier_val_loss, label='Hierarchical ViT (validation)')
+    ax2.set_title('Loss during training')
+    ax2.set_xlabel('Number of Epochs')
+    ax2.set_ylabel('Loss')
+    ax2.legend()
+    plt.show()
 
 
 if __name__ == '__main__':
